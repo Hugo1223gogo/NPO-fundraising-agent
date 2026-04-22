@@ -1,40 +1,93 @@
 import os
+from datetime import datetime, timezone
+
+from bson import ObjectId
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
 load_dotenv()
 
 MONGODB_URI = os.getenv("MONGODB_URI")
-
 if not MONGODB_URI:
     raise ValueError("MONGODB_URI not found in .env")
 
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+db = client["u4h_fundraising"]
 
-db = client["careerops_agent"]
-collection = db["interactions"]
+roster_col = db["roster"]
+recommendations_col = db["recommendations"]
+feedback_col = db["feedback"]
 
 
-def test_connection():
+def test_connection() -> str:
     client.admin.command("ping")
     return "MongoDB connection successful"
 
 
-def save_interaction(data: dict):
-    result = collection.insert_one(data)
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def seed_roster_if_empty(people: list[dict]) -> int:
+    if roster_col.count_documents({}) > 0:
+        return 0
+    if not people:
+        return 0
+    roster_col.insert_many(people)
+    return len(people)
+
+
+def reseed_roster(people: list[dict]) -> int:
+    roster_col.delete_many({})
+    if not people:
+        return 0
+    roster_col.insert_many(people)
+    return len(people)
+
+
+def get_roster() -> list[dict]:
+    return list(roster_col.find({}, {"_id": 0}))
+
+
+def save_recommendation(rec: dict) -> str:
+    doc = {**rec, "created_at": _now_iso()}
+    result = recommendations_col.insert_one(doc)
     return str(result.inserted_id)
 
 
-def find_interactions_by_person(person_name: str):
-    results = list(
-        collection.find(
-            {"person_name": {"$regex": f"^{person_name}$", "$options": "i"}},
-            {"_id": 0}
-        )
-    )
-    return results
+def get_recommendations(limit: int = 50) -> list[dict]:
+    return list(recommendations_col.find().sort("_id", -1).limit(limit))
 
 
-def get_all_interactions():
-    return list(collection.find({}, {"_id": 0}))
-    
+def get_recommendation_by_id(rec_id: str):
+    try:
+        return recommendations_col.find_one({"_id": ObjectId(rec_id)})
+    except Exception:
+        return None
+
+
+def save_feedback(rec_id: str, person_name: str, outcome: str, note: str = "") -> str:
+    entry = {
+        "recommendation_id": rec_id,
+        "person_name": person_name,
+        "outcome": outcome,
+        "note": note,
+        "created_at": _now_iso(),
+    }
+    result = feedback_col.insert_one(entry)
+    return str(result.inserted_id)
+
+
+def get_feedback(limit: int = 50) -> list[dict]:
+    return list(feedback_col.find({}, {"_id": 0}).sort("_id", -1).limit(limit))
+
+
+def get_outcome_history(limit: int = 100) -> list[dict]:
+    return [
+        {
+            "person_name": fb.get("person_name"),
+            "outcome": fb.get("outcome"),
+            "note": fb.get("note", ""),
+        }
+        for fb in feedback_col.find({}, {"_id": 0}).sort("_id", -1).limit(limit)
+    ]

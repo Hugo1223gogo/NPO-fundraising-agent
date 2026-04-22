@@ -1,11 +1,14 @@
-# CareerOps Agent
+# U4H Donor Recommendation Agent
 
-An AI networking copilot that turns messy meeting notes into structured relationship memory. Built with Streamlit, Google Gemini, and MongoDB.
+A prototype AI fundraising copilot for U4H. Given a fundraising need, it recommends **who to contact**, **through which pathway**, **why**, and **what to do next** — grounded in a roster of supporters active at peer nonprofits (Mothers2Mothers, HelpMum, Assist International) and a feedback loop that captures outreach outcomes.
 
 ## Features
-- **Analyze notes** — extract structured info from raw networking conversation notes
-- **Search memory** — look up past interactions by person
-- **Ask the agent** — Q&A across stored networking history, follow-up suggestions, prioritization, and email drafts
+- **Get Recommendations** — describe a fundraising need; the agent returns up to 3 candidates, each with a 0–100 helpfulness score, pathway (direct / warm intro / event connection), rationale, tactical approach tips, and a concrete next step.
+- **Browse Roster** — search the seeded roster of demo supporters.
+- **Feedback & History** — record the outcome of each outreach (success / no_response / declined). Outcomes are fed back into the next recommendation so the agent improves over time.
+
+## Stack
+Streamlit · Google Gemini (`gemini-2.5-flash`) · MongoDB · pandas.
 
 ## Setup
 
@@ -17,13 +20,17 @@ cp .env.example .env  # then fill in your keys
 streamlit run app.py
 ```
 
+The roster auto-seeds from [data/demo_roster.csv](data/demo_roster.csv) on first run. Edit the CSV and call `reseed_roster(load_roster_from_csv())` from a Python shell (or wipe the `roster` collection) to refresh.
+
 ## Environment variables
 See `.env.example`:
 - `GEMINI_API_KEY` — Google Gemini API key
 - `MONGODB_URI` — MongoDB connection string
 
+Database: `u4h_fundraising` · collections: `roster`, `recommendations`, `feedback`.
+
 ## Deployment (Streamlit Community Cloud)
 1. Push this repo to GitHub
-2. Go to https://share.streamlit.io and connect the repo
-3. Set the main file to `app.py`
+2. Connect at https://share.streamlit.io
+3. Main file: `app.py`
 4. Add `GEMINI_API_KEY` and `MONGODB_URI` under **Settings → Secrets**
