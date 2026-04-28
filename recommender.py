@@ -44,15 +44,20 @@ def recommend(need: str, filters: dict | None = None) -> dict:
     return result
 
 
-def extract_contact(linkedin: str, context: str) -> dict:
+def extract_contact(linkedin: str, context: str, pdf_bytes: bytes | None = None) -> dict:
     model = genai.GenerativeModel("gemini-2.5-flash")
 
     prompt = CONTACT_EXTRACTION_PROMPT.format(
         linkedin=linkedin.strip() or "(none provided)",
         context=context.strip() or "(none provided)",
+        pdf_status="attached (use it as the primary source)" if pdf_bytes else "not attached",
     )
 
-    response = model.generate_content(prompt)
+    parts: list = [prompt]
+    if pdf_bytes:
+        parts.append({"mime_type": "application/pdf", "data": pdf_bytes})
+
+    response = model.generate_content(parts)
     result = json.loads(_strip_fences(response.text))
     result["linkedin_url"] = linkedin.strip()
     return result

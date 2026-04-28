@@ -238,7 +238,8 @@ with tab_rec:
 with tab_add:
     st.subheader("Add Contact")
     st.caption(
-        "Paste a LinkedIn URL and any context you have. Gemini extracts what it can — "
+        "Upload a LinkedIn profile PDF (export it via LinkedIn → More → Save to PDF) "
+        "and add any extra context. Gemini extracts a structured profile — "
         "review the fields and confirm before saving to the roster."
     )
 
@@ -247,20 +248,30 @@ with tab_add:
         placeholder="https://www.linkedin.com/in/...",
         key="add_linkedin",
     )
+    pdf_file = st.file_uploader(
+        "LinkedIn profile PDF (recommended)",
+        type=["pdf"],
+        key="add_pdf",
+        help="On LinkedIn → open the profile → 'More' button → 'Save to PDF' → upload the file here.",
+    )
     context = st.text_area(
         "Additional context",
-        height=180,
-        placeholder="Paste any past meeting notes, email exchanges and other relevant info here...",
+        height=160,
+        placeholder=(
+            "Optional. Paste meeting notes, donation history, mutual connections, "
+            "or anything else not in the LinkedIn PDF."
+        ),
         key="add_context",
     )
 
     if st.button("Import", type="primary", key="add_import"):
-        if not (linkedin.strip() or context.strip()):
-            st.warning("Provide at least a LinkedIn URL or some context.")
+        if not (linkedin.strip() or context.strip() or pdf_file is not None):
+            st.warning("Upload a PDF, paste context, or provide a URL — at least one is needed.")
         else:
+            pdf_bytes = pdf_file.read() if pdf_file is not None else None
             with st.spinner("Extracting contact info..."):
                 try:
-                    st.session_state.pending_contact = extract_contact(linkedin, context)
+                    st.session_state.pending_contact = extract_contact(linkedin, context, pdf_bytes)
                 except Exception as e:
                     st.error(f"Extraction failed: {e}")
 

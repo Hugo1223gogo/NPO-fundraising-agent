@@ -73,7 +73,9 @@ Sort candidates by helpfulness_score, descending.
 CONTACT_EXTRACTION_PROMPT = """
 You are extracting a structured contact profile from raw inputs. The contact will be added to U4H's donor recommendation roster.
 
-Use ONLY the inputs below. Do NOT invent facts. If a field is unknown, use an empty string.
+You may receive any combination of: a LinkedIn URL (a string only — you cannot browse it), a free-text context block (meeting notes, bio paragraphs, etc.), and an attached LinkedIn profile PDF that the user exported via LinkedIn's "Save to PDF" feature.
+
+Use ALL provided sources together. When the PDF is attached, treat it as the primary source for name, role, employer, education, experience history, and skills. Use the context block for relationship / outreach signals (donation history, meeting feedback, personal interests not on LinkedIn). Do NOT invent facts beyond the inputs. If a field is unknown, use an empty string.
 
 Output ONLY valid JSON (no markdown, no code fences) matching this schema:
 
@@ -95,6 +97,8 @@ Output ONLY valid JSON (no markdown, no code fences) matching this schema:
 ## Inputs
 
 LinkedIn URL: {linkedin}
+
+LinkedIn PDF: {pdf_status}
 
 Additional context:
 {context}
