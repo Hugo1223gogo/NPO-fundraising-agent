@@ -49,6 +49,19 @@ def get_roster() -> list[dict]:
     return list(roster_col.find({}, {"_id": 0}))
 
 
+def add_person_to_roster(person: dict) -> str:
+    doc = {**person, "added_at": _now_iso()}
+    result = roster_col.insert_one(doc)
+    return str(result.inserted_id)
+
+
+def find_person_by_name(name: str) -> dict | None:
+    return roster_col.find_one(
+        {"name": {"$regex": f"^{name}$", "$options": "i"}},
+        {"_id": 0},
+    )
+
+
 def save_recommendation(rec: dict) -> str:
     doc = {**rec, "created_at": _now_iso()}
     result = recommendations_col.insert_one(doc)

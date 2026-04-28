@@ -5,7 +5,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 
 from memory import get_outcome_history, get_roster
-from prompts import RECOMMENDATION_PROMPT
+from prompts import CONTACT_EXTRACTION_PROMPT, RECOMMENDATION_PROMPT
 
 load_dotenv()
 
@@ -41,4 +41,18 @@ def recommend(need: str, filters: dict | None = None) -> dict:
 
     result["need"] = need
     result["filters"] = filters or {}
+    return result
+
+
+def extract_contact(linkedin: str, context: str) -> dict:
+    model = genai.GenerativeModel("gemini-2.5-flash")
+
+    prompt = CONTACT_EXTRACTION_PROMPT.format(
+        linkedin=linkedin.strip() or "(none provided)",
+        context=context.strip() or "(none provided)",
+    )
+
+    response = model.generate_content(prompt)
+    result = json.loads(_strip_fences(response.text))
+    result["linkedin_url"] = linkedin.strip()
     return result

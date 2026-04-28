@@ -8,14 +8,31 @@ Your job: given U4H's current fundraising need and a roster of potential support
 - Willingness: likelihood of engaging, judged from donation history, role, and any feedback notes
 - Network reach: does the person sit on multiple boards, attend major events, or operate in relevant philanthropic circles
 
-## Pathway options (pick the most plausible)
-- "direct": cold outreach to the person themselves
-- "warm intro via <another person in the roster>": use a specific colleague as a bridge
-- "event connection: <specific event from the roster>": approach them at a gala / conference / awards they attend
+## Pathway design
+For each candidate, choose the most plausible pathway from the user (U4H) to that candidate. Pathways may be:
+- "direct": cold outreach to the candidate themselves
+- "warm intro via <name>": route through a SPECIFIC OTHER person from the roster who can bridge to the candidate
+- "event connection: <event name>": meet the candidate at a specific gala / conference / awards from the roster
+
+For each pathway, output the ordered chain of nodes the connection traverses, starting with "User" and ending with the candidate. Examples:
+- direct: ["User", "<candidate name>"]
+- warm intro via Jane Doe: ["User", "Jane Doe", "<candidate name>"]
+- event connection at AAI Awards: ["User", "AAI Awards", "<candidate name>"]
+
+## Expected success rate (0-100)
+Estimate the probability that this pathway results in a positive engagement (meeting accepted, gift considered). Calibrate from these rough anchors:
+- Direct cold outreach to a stranger with no signal: 15-30
+- Direct outreach to someone with strong cause alignment + past giving signal: 35-60
+- Warm intro via a peer at the same nonprofit: 60-85
+- Warm intro via someone who has previously responded successfully: 75-90
+- Any pathway involving a person whose past_outcome is "no_response" or "declined": cap at 25
+- Routing THROUGH (not to) a person with past no_response is acceptable but reduce the rate by 10-15
+
+The expected_success_rate is independent of helpfulness_score. A perfect-fit candidate reachable only via cold outreach can have helpfulness_score 95 but expected_success_rate 30.
 
 ## Rules
 - Ground every claim in the roster and past outcomes. Do NOT invent affiliations, roles, or events.
-- If a person's past-outcome history shows no_response or declined, lower their score and reflect that in `why`.
+- If a person's past-outcome history shows no_response or declined, lower their helpfulness_score and reflect that in `why`.
 - If no one in the roster is a strong match, return an empty candidates list and say so in `summary`.
 - Quote or paraphrase the roster fields (bio, events, donation history, feedback notes) that justify each recommendation.
 - Return ONLY valid JSON. No markdown, no code fences, no prose outside the JSON.
@@ -27,6 +44,8 @@ Your job: given U4H's current fundraising need and a roster of potential support
     {{
       "name": "<exact name as it appears in the roster>",
       "pathway": "<direct | warm intro via X | event connection: Y>",
+      "pathway_nodes": ["User", "...", "<candidate name>"],
+      "expected_success_rate": <integer 0-100>,
       "helpfulness_score": <integer 0-100>,
       "why": "<2-4 sentences grounded in specific roster fields>",
       "how_to_approach": "<1-2 sentences of tactical guidance>",
@@ -48,4 +67,35 @@ Sort candidates by helpfulness_score, descending.
 
 ## Past outreach outcomes (most recent first)
 {outcomes}
+""".strip()
+
+
+CONTACT_EXTRACTION_PROMPT = """
+You are extracting a structured contact profile from raw inputs. The contact will be added to U4H's donor recommendation roster.
+
+Use ONLY the inputs below. Do NOT invent facts. If a field is unknown, use an empty string.
+
+Output ONLY valid JSON (no markdown, no code fences) matching this schema:
+
+{{
+  "name": "<full name>",
+  "location": "<City, Country>",
+  "nonprofit_affiliation": "<nonprofit they serve / support, e.g., board membership>",
+  "education": "<schools, comma-separated>",
+  "professional_affiliation": "<current employer or organization>",
+  "professional_industry": "<current industry, e.g., Pharma / Biotech, Consulting, Healthcare>",
+  "past_industries": "<past industries, comma-separated>",
+  "personal_interests": "<hobbies, causes, interests>",
+  "donation_history": "<known past giving>",
+  "events_awards": "<events attended, awards received>",
+  "bio": "<2-4 sentence professional bio in third person>",
+  "feedback_notes": "<any meeting notes or interaction feedback you can derive from the inputs>"
+}}
+
+## Inputs
+
+LinkedIn URL: {linkedin}
+
+Additional context:
+{context}
 """.strip()

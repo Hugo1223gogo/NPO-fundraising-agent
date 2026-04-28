@@ -2,6 +2,7 @@ import streamlit as st
 
 from data_loader import load_roster_from_csv
 from memory import (
+    add_person_to_roster,
     get_feedback,
     get_recommendations,
     get_roster,
@@ -9,7 +10,7 @@ from memory import (
     save_recommendation,
     seed_roster_if_empty,
 )
-from recommender import recommend
+from recommender import extract_contact, recommend
 
 st.set_page_config(
     page_title="U4H Donor Recommendation Agent",
@@ -20,18 +21,39 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-    .block-container { max-width: 1050px; padding-top: 2rem; }
+    .block-container { max-width: 1100px; padding-top: 2rem; }
     h1, h2, h3 { letter-spacing: -0.01em; }
     div[data-testid="stTextArea"] textarea,
     div[data-testid="stTextInput"] input {
         border-radius: 10px !important;
     }
-    div.stButton > button {
+    div.stButton > button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"] {
         border-radius: 10px;
         background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
         color: white;
         font-weight: 600;
+        border: none;
     }
+    .tile {
+        color: white;
+        padding: 16px 18px;
+        border-radius: 12px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 1.05rem;
+        margin-bottom: 8px;
+        box-shadow: 0 4px 12px rgba(15,23,42,0.08);
+    }
+    .tile .score { font-weight: 400; font-size: 0.85rem; opacity: 0.92; }
+    .request-quote {
+        background: #f8fafc;
+        border-left: 4px solid #4f46e5;
+        padding: 12px 16px;
+        border-radius: 6px;
+        color: #1f2937;
+    }
+    .byline { color: #6b7280; margin-top: -12px; margin-bottom: 22px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -45,17 +67,75 @@ def _initial_seed() -> int:
 
 _ = _initial_seed()
 
+TILE_COLORS = ["#f97316", "#3b82f6", "#10b981"]  # orange, blue, green
+
+
+def _build_connection_map_dot(candidates: list[dict]) -> str:
+    lines = [
+        "digraph G {",
+        "rankdir=LR;",
+        'bgcolor="white";',
+        'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, margin="0.18,0.10"];',
+        'edge [fontname="Helvetica", fontsize=10, color="#6b7280"];',
+        '"User" [shape=ellipse, fillcolor="#1e3a8a", fontcolor=white, fontsize=12];',
+    ]
+    declared = {"User"}
+    for i, c in enumerate(candidates[:3]):
+        candidate_name = (c.get("name") or "").strip()
+        if not candidate_name:
+            continue
+        nodes = list(c.get("pathway_nodes") or ["User", candidate_name])
+        if not nodes:
+            nodes = ["User", candidate_name]
+        if nodes[0] != "User":
+            nodes = ["User"] + nodes
+        if nodes[-1] != candidate_name:
+            nodes = nodes + [candidate_name]
+        rate = c.get("expected_success_rate", 0)
+        color = TILE_COLORS[i % len(TILE_COLORS)]
+        for n in nodes:
+            if n in declared:
+                continue
+            safe = n.replace('"', '\\"')
+            if n == candidate_name:
+                lines.append(f'"{safe}" [fillcolor="{color}", fontcolor=white];')
+            else:
+                lines.append(f'"{safe}" [fillcolor="#e5e7eb", fontcolor="#111827"];')
+            declared.add(n)
+        for j in range(len(nodes) - 1):
+            label = f"{rate}%" if j == len(nodes) - 2 else ""
+            src = nodes[j].replace('"', '\\"')
+            dst = nodes[j + 1].replace('"', '\\"')
+            lines.append(f'"{src}" -> "{dst}" [label="{label}"];')
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def _person_lookup(roster: list[dict], name: str) -> dict:
+    target = (name or "").strip().lower()
+    for p in roster:
+        if (p.get("name") or "").strip().lower() == target:
+            return p
+    return {}
+
+
+# ---------- Header ----------
+
 st.title("U4H Donor Recommendation Agent")
-st.caption(
-    "For a given fundraising need, recommend who to contact, through which pathway, "
-    "and why — grounded in U4H's roster and past outreach outcomes."
+st.markdown(
+    "<div class='byline'>"
+    "Built by <b>Terrence</b>, <b>Hugo</b>, and <b>Mahlet</b> · "
+    "For a given fundraising need, recommend who to contact, through which pathway, and why."
+    "</div>",
+    unsafe_allow_html=True,
 )
 
-tab_rec, tab_roster, tab_history = st.tabs(
-    ["Get Recommendations", "Browse Roster", "Feedback & History"]
+tab_rec, tab_add, tab_roster, tab_history = st.tabs(
+    ["Get Recommendations", "Add Contact", "Browse Roster", "Feedback & History"]
 )
 
-# ----- Tab: Get Recommendations -----
+# ---------- Tab: Get Recommendations ----------
+
 with tab_rec:
     st.subheader("Describe your fundraising need")
     need = st.text_area(
@@ -65,15 +145,16 @@ with tab_rec:
             "Example: We're launching a maternal health outreach pilot in Lagos "
             "and need to raise $300K by Q3. Who should I approach?"
         ),
+        key="rec_need",
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        region = st.text_input("Target region (optional)", placeholder="e.g., West Africa")
-    with col2:
-        industry = st.text_input("Industry focus (optional)", placeholder="e.g., Pharma, Consulting")
+    inp_c1, inp_c2 = st.columns(2)
+    with inp_c1:
+        region = st.text_input("Target region (optional)", placeholder="e.g., West Africa", key="rec_region")
+    with inp_c2:
+        industry = st.text_input("Industry focus (optional)", placeholder="e.g., Pharma, Consulting", key="rec_industry")
 
-    if st.button("Get recommendations", type="primary"):
+    if st.button("Get recommendations", type="primary", key="rec_run"):
         if not need.strip():
             st.warning("Enter a fundraising need first.")
         else:
@@ -82,36 +163,174 @@ with tab_rec:
                 try:
                     result = recommend(need, filters=filters or None)
                     rec_id = save_recommendation(result)
-
-                    st.success("Recommendations ready.")
-                    summary = result.get("summary", "")
-                    if summary:
-                        st.markdown(f"**Strategy:** {summary}")
-                    st.divider()
-
-                    candidates = result.get("candidates", [])
-                    if not candidates:
-                        st.info("No strong matches in the current roster.")
-                    for c in candidates:
-                        score = c.get("helpfulness_score", "?")
-                        st.markdown(f"### {c.get('name', '?')} — {score}/100")
-                        st.markdown(f"**Pathway:** {c.get('pathway', '')}")
-                        st.markdown(f"**Why:** {c.get('why', '')}")
-                        st.markdown(f"**How to approach:** {c.get('how_to_approach', '')}")
-                        st.markdown(f"**Suggested next step:** {c.get('suggested_next_step', '')}")
-                        st.divider()
-
-                    st.caption(f"Recommendation ID: `{rec_id}` — record outcomes on the Feedback tab.")
+                    st.session_state.last_result = result
+                    st.session_state.last_rec_id = rec_id
                 except Exception as e:
+                    st.session_state.last_result = None
                     st.error(f"Something went wrong: {e}")
 
-# ----- Tab: Browse Roster -----
+    result = st.session_state.get("last_result")
+    if result:
+        rec_id = st.session_state.get("last_rec_id", "")
+        candidates = result.get("candidates", [])
+        roster = get_roster()
+
+        st.divider()
+
+        st.markdown("### Request")
+        st.markdown(
+            f"<div class='request-quote'>{result.get('need', '')}</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("### Suggested Contacts")
+        if not candidates:
+            st.info("No strong matches in the current roster.")
+        else:
+            tile_cols = st.columns(min(len(candidates), 3))
+            for i, c in enumerate(candidates[:3]):
+                with tile_cols[i]:
+                    name = c.get("name", "?")
+                    score = c.get("helpfulness_score", "?")
+                    color = TILE_COLORS[i % len(TILE_COLORS)]
+                    st.markdown(
+                        f"<div class='tile' style='background:{color};'>"
+                        f"{name}<br><span class='score'>{score}/100</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    person = _person_lookup(roster, name)
+                    with st.popover("Bio · Location · Contact", use_container_width=True):
+                        st.markdown(f"**Location:** {person.get('location') or '—'}")
+                        st.markdown(f"**Affiliation:** {person.get('nonprofit_affiliation') or '—'}")
+                        st.markdown(f"**Industry:** {person.get('professional_industry') or '—'}")
+                        st.markdown(f"**Current role / org:** {person.get('professional_affiliation') or '—'}")
+                        if person.get("linkedin_url"):
+                            st.markdown(f"**LinkedIn:** {person['linkedin_url']}")
+                        bio = person.get("bio") or "—"
+                        st.markdown(f"**Bio:** {bio}")
+
+        if result.get("summary"):
+            st.markdown("### Strategy")
+            st.write(result["summary"])
+
+        if candidates:
+            st.markdown("### Connection Map")
+            st.graphviz_chart(_build_connection_map_dot(candidates), use_container_width=True)
+
+            st.markdown("### Detail")
+            for c in candidates:
+                title = (
+                    f"{c.get('name', '?')} — score {c.get('helpfulness_score', '?')}/100  ·  "
+                    f"expected success {c.get('expected_success_rate', '?')}%"
+                )
+                with st.expander(title):
+                    st.markdown(f"**Pathway:** {c.get('pathway', '')}")
+                    st.markdown(f"**Why:** {c.get('why', '')}")
+                    st.markdown(f"**How to approach:** {c.get('how_to_approach', '')}")
+                    st.markdown(f"**Suggested next step:** {c.get('suggested_next_step', '')}")
+
+        if rec_id:
+            st.caption(f"Recommendation ID: `{rec_id}` — record outcomes on the Feedback tab.")
+
+# ---------- Tab: Add Contact ----------
+
+with tab_add:
+    st.subheader("Add Contact")
+    st.caption(
+        "Paste a LinkedIn URL and any context you have. Gemini extracts what it can — "
+        "review the fields and confirm before saving to the roster."
+    )
+
+    linkedin = st.text_input(
+        "LinkedIn URL",
+        placeholder="https://www.linkedin.com/in/...",
+        key="add_linkedin",
+    )
+    context = st.text_area(
+        "Additional context",
+        height=180,
+        placeholder="Paste any past meeting notes, email exchanges and other relevant info here...",
+        key="add_context",
+    )
+
+    if st.button("Import", type="primary", key="add_import"):
+        if not (linkedin.strip() or context.strip()):
+            st.warning("Provide at least a LinkedIn URL or some context.")
+        else:
+            with st.spinner("Extracting contact info..."):
+                try:
+                    st.session_state.pending_contact = extract_contact(linkedin, context)
+                except Exception as e:
+                    st.error(f"Extraction failed: {e}")
+
+    pending = st.session_state.get("pending_contact")
+    if pending:
+        st.divider()
+        st.markdown("### Review and confirm")
+        st.caption("Edit any field, then click **Save to roster**.")
+
+        with st.form("save_contact_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                f_name = st.text_input("Name *", value=pending.get("name", ""))
+                f_location = st.text_input("Location", value=pending.get("location", ""))
+                f_npo = st.text_input("Nonprofit affiliation", value=pending.get("nonprofit_affiliation", ""))
+                f_edu = st.text_input("Education", value=pending.get("education", ""))
+                f_proaff = st.text_input("Professional affiliation", value=pending.get("professional_affiliation", ""))
+                f_proind = st.text_input("Professional industry", value=pending.get("professional_industry", ""))
+            with c2:
+                f_past = st.text_input("Past industries", value=pending.get("past_industries", ""))
+                f_inter = st.text_input("Personal interests", value=pending.get("personal_interests", ""))
+                f_don = st.text_input("Donation history", value=pending.get("donation_history", ""))
+                f_ev = st.text_input("Events / Awards", value=pending.get("events_awards", ""))
+                f_lurl = st.text_input("LinkedIn URL", value=pending.get("linkedin_url", ""))
+
+            f_bio = st.text_area("Bio", value=pending.get("bio", ""), height=120)
+            f_fb = st.text_area("Feedback / meeting notes", value=pending.get("feedback_notes", ""), height=80)
+
+            sb1, sb2 = st.columns([1, 5])
+            with sb1:
+                saved = st.form_submit_button("Save to roster", type="primary")
+            with sb2:
+                discarded = st.form_submit_button("Discard")
+
+            if saved:
+                if not f_name.strip():
+                    st.warning("Name is required.")
+                else:
+                    add_person_to_roster(
+                        {
+                            "name": f_name.strip(),
+                            "location": f_location.strip(),
+                            "nonprofit_affiliation": f_npo.strip(),
+                            "education": f_edu.strip(),
+                            "professional_affiliation": f_proaff.strip(),
+                            "professional_industry": f_proind.strip(),
+                            "past_industries": f_past.strip(),
+                            "personal_interests": f_inter.strip(),
+                            "donation_history": f_don.strip(),
+                            "events_awards": f_ev.strip(),
+                            "bio": f_bio.strip(),
+                            "feedback_notes": f_fb.strip(),
+                            "linkedin_url": f_lurl.strip(),
+                        }
+                    )
+                    st.success(f"✓ {f_name.strip()} added to the roster.")
+                    del st.session_state["pending_contact"]
+                    st.rerun()
+            elif discarded:
+                del st.session_state["pending_contact"]
+                st.rerun()
+
+# ---------- Tab: Browse Roster ----------
+
 with tab_roster:
     st.subheader("Roster")
     roster = get_roster()
-    st.caption(f"{len(roster)} people loaded from the demo CSV.")
+    st.caption(f"{len(roster)} people in the roster.")
 
-    q = st.text_input("Filter (matches any field)")
+    q = st.text_input("Filter (matches any field)", key="roster_filter")
     if q:
         ql = q.lower()
         roster = [p for p in roster if ql in " ".join(str(v).lower() for v in p.values())]
@@ -122,7 +341,8 @@ with tab_roster:
         with st.expander(header):
             st.json(p)
 
-# ----- Tab: Feedback & History -----
+# ---------- Tab: Feedback & History ----------
+
 with tab_history:
     st.subheader("Past recommendations")
     recs = get_recommendations(limit=25)
