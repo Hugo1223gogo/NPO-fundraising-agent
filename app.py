@@ -233,6 +233,24 @@ with tab_rec:
                     st.markdown(f"**How to approach:** {c.get('how_to_approach', '')}")
                     st.markdown(f"**Suggested next step:** {c.get('suggested_next_step', '')}")
 
+                    applied = c.get("applied_outcomes") or []
+                    if applied:
+                        st.markdown("**Past outcomes that shaped this recommendation:**")
+                        effect_icon = {"supported": "▲", "reduced": "▼", "neutral": "•"}
+                        effect_color = {"supported": "#16a34a", "reduced": "#dc2626", "neutral": "#6b7280"}
+                        for ao in applied:
+                            eff = ao.get("effect", "neutral")
+                            icon = effect_icon.get(eff, "•")
+                            color = effect_color.get(eff, "#6b7280")
+                            st.markdown(
+                                f"<div style='margin:4px 0 6px 8px;'>"
+                                f"<span style='color:{color};font-weight:700;'>{icon}</span> "
+                                f"<b>{ao.get('person_name', '?')}</b> — "
+                                f"<i>{ao.get('outcome', '?')}</i> · {ao.get('rationale', '')}"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+
         if rec_id:
             st.caption(f"Recommendation ID: `{rec_id}` — record outcomes on the Feedback tab.")
 

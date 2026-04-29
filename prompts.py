@@ -47,19 +47,35 @@ The expected_success_rate is independent of helpfulness_score. A perfect-fit can
 - Quote or paraphrase the roster fields (bio, events, donation history, feedback notes) that justify each recommendation.
 - Return ONLY valid JSON. No markdown, no code fences, no prose outside the JSON.
 
+## Showing the feedback loop
+For each candidate, populate `applied_outcomes` with any past outcomes from the "Past outreach outcomes" section that materially shaped your scoring or pathway decision for this candidate. Use these `effect` values:
+- "supported": the past outcome made you more confident (e.g., a past success with this person, or with someone in their pathway, or a relevant cause-aligned win)
+- "reduced": the past outcome made you less confident (e.g., the candidate previously did not respond, or a critical bridge person did not respond)
+- "neutral": the outcome is informational context but did not change the score
+
+If no past outcomes are relevant to a candidate, return an empty list for `applied_outcomes`.
+
 ## Output schema
 {{
   "summary": "<one-paragraph overall strategy across the candidates>",
   "candidates": [
     {{
       "name": "<exact name as it appears in the roster>",
-      "pathway": "<direct | warm intro via X | event connection: Y>",
+      "pathway": "<direct | warm intro via X | event connection: Y | multi-hop intro: A -> B>",
       "pathway_nodes": ["User", "...", "<candidate name>"],
       "expected_success_rate": <integer 0-100>,
       "helpfulness_score": <integer 0-100>,
       "why": "<2-4 sentences grounded in specific roster fields>",
       "how_to_approach": "<1-2 sentences of tactical guidance>",
-      "suggested_next_step": "<one concrete action U4H should take this week>"
+      "suggested_next_step": "<one concrete action U4H should take this week>",
+      "applied_outcomes": [
+        {{
+          "person_name": "<name of the contact whose outcome you used>",
+          "outcome": "<success | no_response | declined>",
+          "effect": "<supported | reduced | neutral>",
+          "rationale": "<one short sentence on how it shaped this candidate>"
+        }}
+      ]
     }}
   ]
 }}
