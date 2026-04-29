@@ -4,6 +4,7 @@ from data_loader import load_roster_from_csv
 from memory import (
     add_person_to_roster,
     get_feedback,
+    get_feedback_for_person,
     get_recommendations,
     get_roster,
     save_feedback,
@@ -348,8 +349,23 @@ with tab_roster:
         st.caption(f"{len(roster)} matches")
 
     for p in roster:
-        header = f"{p.get('name', '?')} — {p.get('nonprofit_affiliation', '')}"
+        name = p.get("name", "?")
+        outcomes = get_feedback_for_person(name)
+        header = f"{name} — {p.get('nonprofit_affiliation', '')}"
+        if outcomes:
+            header += f"  ·  {len(outcomes)} recorded outcome{'s' if len(outcomes) > 1 else ''}"
         with st.expander(header):
+            if outcomes:
+                st.markdown("##### Recorded outcomes")
+                for o in outcomes:
+                    line = f"- **{o.get('outcome', '?')}**"
+                    if o.get("note"):
+                        line += f" — {o['note']}"
+                    if o.get("created_at"):
+                        line += f"  _(saved {o['created_at'][:10]})_"
+                    st.markdown(line)
+                st.divider()
+            st.markdown("##### Profile")
             st.json(p)
 
 # ---------- Tab: Feedback & History ----------

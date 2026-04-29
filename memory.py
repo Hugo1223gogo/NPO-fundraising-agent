@@ -95,6 +95,18 @@ def get_feedback(limit: int = 50) -> list[dict]:
     return list(feedback_col.find({}, {"_id": 0}).sort("_id", -1).limit(limit))
 
 
+def get_feedback_for_person(name: str) -> list[dict]:
+    target = (name or "").strip()
+    if not target:
+        return []
+    return list(
+        feedback_col.find(
+            {"person_name": {"$regex": f"^{target}$", "$options": "i"}},
+            {"_id": 0},
+        ).sort("_id", -1)
+    )
+
+
 def get_outcome_history(limit: int = 100) -> list[dict]:
     return [
         {
