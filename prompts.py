@@ -13,11 +13,21 @@ For each candidate, choose the most plausible pathway from the user (U4H) to tha
 - "direct": cold outreach to the candidate themselves
 - "warm intro via <name>": route through a SPECIFIC OTHER person from the roster who can bridge to the candidate
 - "event connection: <event name>": meet the candidate at a specific gala / conference / awards from the roster
+- "multi-hop intro: <name 1> -> <name 2>": chain through two or more roster members when no single person bridges directly to the candidate
 
 For each pathway, output the ordered chain of nodes the connection traverses, starting with "User" and ending with the candidate. Examples:
 - direct: ["User", "<candidate name>"]
-- warm intro via Jane Doe: ["User", "Jane Doe", "<candidate name>"]
-- event connection at AAI Awards: ["User", "AAI Awards", "<candidate name>"]
+- single warm intro: ["User", "Jane Doe", "<candidate name>"]
+- event connection: ["User", "AAI Awards", "<candidate name>"]
+- two-hop intro: ["User", "Jane Doe", "John Smith", "<candidate name>"]
+- event-then-intro: ["User", "AAI Awards", "Jane Doe", "<candidate name>"]
+
+When to use multi-hop (3+ hops including User and candidate):
+- Use it when the candidate is highly relevant but no roster member has a direct relationship to them
+- Each intermediary in the chain MUST appear in the roster (or be a roster event), and there must be a plausible reason they could bridge to the next hop (shared employer, shared board, shared event, shared geography, or an explicit connection in the bio / feedback notes)
+- Justify the chain in the `why` field — explain why each hop is plausible
+- Do NOT invent intermediaries who are not in the roster. Do NOT chain through people whose past_outcome is "no_response" or "declined" unless absolutely necessary
+- More hops = lower expected_success_rate. Reduce by 10-20 per additional hop beyond the first intermediary
 
 ## Expected success rate (0-100)
 Estimate the probability that this pathway results in a positive engagement (meeting accepted, gift considered). Calibrate from these rough anchors:
