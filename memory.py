@@ -62,6 +62,17 @@ def find_person_by_name(name: str) -> dict | None:
     )
 
 
+def update_person_in_roster(existing_name: str, updates: dict) -> int:
+    if not existing_name.strip() or not updates:
+        return 0
+    payload = {**updates, "updated_at": _now_iso()}
+    result = roster_col.update_one(
+        {"name": {"$regex": f"^{existing_name}$", "$options": "i"}},
+        {"$set": payload},
+    )
+    return result.modified_count
+
+
 def save_recommendation(rec: dict) -> str:
     doc = {**rec, "created_at": _now_iso()}
     result = recommendations_col.insert_one(doc)

@@ -3,6 +3,7 @@ import streamlit as st
 from data_loader import load_roster_from_csv
 from memory import (
     add_person_to_roster,
+    find_person_by_name,
     get_feedback,
     get_feedback_for_person,
     get_recommendations,
@@ -10,6 +11,7 @@ from memory import (
     save_feedback,
     save_recommendation,
     seed_roster_if_empty,
+    update_person_in_roster,
 )
 from recommender import extract_contact, recommend
 
@@ -272,15 +274,34 @@ with tab_add:
             pdf_bytes = pdf_file.read() if pdf_file is not None else None
             with st.spinner("Extracting contact info..."):
                 try:
-                    st.session_state.pending_contact = extract_contact(linkedin, context, pdf_bytes)
+                    extracted = extract_contact(linkedin, context, pdf_bytes)
+                    existing = find_person_by_name(extracted.get("name", "")) if extracted.get("name") else None
+                    if existing:
+                        merged = {**existing}
+                        for k, v in extracted.items():
+                            if v and not merged.get(k):
+                                merged[k] = v
+                        st.session_state.pending_contact = merged
+                        st.session_state.pending_existing_name = existing.get("name")
+                    else:
+                        st.session_state.pending_contact = extracted
+                        st.session_state.pop("pending_existing_name", None)
                 except Exception as e:
                     st.error(f"Extraction failed: {e}")
 
     pending = st.session_state.get("pending_contact")
+    existing_name = st.session_state.get("pending_existing_name")
     if pending:
         st.divider()
-        st.markdown("### Review and confirm")
-        st.caption("Edit any field, then click **Save to roster**.")
+        if existing_name:
+            st.warning(
+                f"**{existing_name}** is already in the roster. Saving will **update the existing entry** "
+                "(empty fields are filled from the new import; existing values are preserved unless you edit them)."
+            )
+            st.markdown("### Review and update")
+        else:
+            st.markdown("### Review and confirm")
+            st.caption("Edit any field, then click **Save to roster**.")
 
         with st.form("save_contact_form"):
             c1, c2 = st.columns(2)
@@ -303,7 +324,8 @@ with tab_add:
 
             sb1, sb2 = st.columns([1, 5])
             with sb1:
-                saved = st.form_submit_button("Save to roster", type="primary")
+                save_label = "Update existing" if existing_name else "Save to roster"
+                saved = st.form_submit_button(save_label, type="primary")
             with sb2:
                 discarded = st.form_submit_button("Discard")
 
@@ -311,28 +333,36 @@ with tab_add:
                 if not f_name.strip():
                     st.warning("Name is required.")
                 else:
-                    add_person_to_roster(
-                        {
-                            "name": f_name.strip(),
-                            "location": f_location.strip(),
-                            "nonprofit_affiliation": f_npo.strip(),
-                            "education": f_edu.strip(),
-                            "professional_affiliation": f_proaff.strip(),
-                            "professional_industry": f_proind.strip(),
-                            "past_industries": f_past.strip(),
-                            "personal_interests": f_inter.strip(),
-                            "donation_history": f_don.strip(),
-                            "events_awards": f_ev.strip(),
-                            "bio": f_bio.strip(),
-                            "feedback_notes": f_fb.strip(),
-                            "linkedin_url": f_lurl.strip(),
-                        }
-                    )
-                    st.success(f"✓ {f_name.strip()} added to the roster.")
+                    payload = {
+                        "name": f_name.strip(),
+                        "location": f_location.strip(),
+                        "nonprofit_affiliation": f_npo.strip(),
+                        "education": f_edu.strip(),
+                        "professional_affiliation": f_proaff.strip(),
+                        "professional_industry": f_proind.strip(),
+                        "past_industries": f_past.strip(),
+                        "personal_interests": f_inter.strip(),
+                        "donation_history": f_don.strip(),
+                        "events_awards": f_ev.strip(),
+                        "bio": f_bio.strip(),
+                        "feedback_notes": f_fb.strip(),
+                        "linkedin_url": f_lurl.strip(),
+                    }
+                    if existing_name:
+                        modified = update_person_in_roster(existing_name, payload)
+                        if modified:
+                            st.success(f"✓ {f_name.strip()} updated in the roster.")
+                        else:
+                            st.info(f"No changes were needed for {existing_name}.")
+                    else:
+                        add_person_to_roster(payload)
+                        st.success(f"✓ {f_name.strip()} added to the roster.")
                     del st.session_state["pending_contact"]
+                    st.session_state.pop("pending_existing_name", None)
                     st.rerun()
             elif discarded:
                 del st.session_state["pending_contact"]
+                st.session_state.pop("pending_existing_name", None)
                 st.rerun()
 
 # ---------- Tab: Browse Roster ----------
